@@ -1,3 +1,4 @@
+import importlib
 import os
 import sys
 
@@ -7,6 +8,23 @@ if TOOL_DIR not in sys.path:
     sys.path.insert(0, TOOL_DIR)
 
 import mapunit_symbolizer
+
+
+def load_symbolizer_module():
+    module = importlib.reload(mapunit_symbolizer)
+    expected_attrs = (
+        "update_feature_class",
+        "update_feature_class_from_layerfile",
+        "format_summary",
+    )
+    missing = [attr for attr in expected_attrs if not hasattr(module, attr)]
+    if missing:
+        raise RuntimeError(
+            "ArcGIS Pro appears to have loaded a stale copy of mapunit_symbolizer.py. "
+            "Close the toolbox, remove and re-add MapUnitSymbolizer.pyt, or restart ArcGIS Pro. "
+            "Missing attribute(s): " + ", ".join(missing)
+        )
+    return module
 
 
 class Toolbox(object):
@@ -124,6 +142,7 @@ class AssignSymbolsFromLayerFile(object):
     def execute(self, parameters, messages):
         import arcpy
 
+        symbolizer = load_symbolizer_module()
         input_fc = parameters[0].valueAsText
         layer_file = parameters[1].valueAsText
         layer_name = parameters[2].valueAsText or None
@@ -134,7 +153,7 @@ class AssignSymbolsFromLayerFile(object):
         code_pattern = parameters[7].valueAsText or None
 
         try:
-            updated, unmatched, resolved_layer_name = mapunit_symbolizer.update_feature_class_from_layerfile(
+            updated, unmatched, resolved_layer_name = symbolizer.update_feature_class_from_layerfile(
                 feature_class=input_fc,
                 layer_file_path=layer_file,
                 mapunit_field=mapunit_field,
@@ -216,13 +235,14 @@ class AssignMapUnitSymbols(object):
     def execute(self, parameters, messages):
         import arcpy
 
+        symbolizer = load_symbolizer_module()
         input_fc = parameters[0].valueAsText
         mapunit_field = parameters[1].valueAsText or "MapUnit"
         symbol_field = parameters[2].valueAsText or "Symbol"
         override_csv = parameters[3].valueAsText or None
 
         try:
-            updated, counts = mapunit_symbolizer.update_feature_class(
+            updated, counts = symbolizer.update_feature_class(
                 feature_class=input_fc,
                 mapunit_field=mapunit_field,
                 symbol_field=symbol_field,
@@ -233,4 +253,4 @@ class AssignMapUnitSymbols(object):
             raise
 
         arcpy.AddMessage(f"Updated {updated} rows.")
-        arcpy.AddMessage(mapunit_symbolizer.format_summary(counts))
+        arcpy.AddMessage(symbolizer.format_summary(counts))
