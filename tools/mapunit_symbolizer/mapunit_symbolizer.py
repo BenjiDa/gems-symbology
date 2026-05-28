@@ -282,10 +282,18 @@ def build_symbol_lookup_from_renderer(
             code = resolve_item_symbol_code(item, code_source=code_source, code_pattern=code_pattern)
             if not code:
                 item_label = get_string_attr(item, "label") or "<blank>"
+                source_name = {
+                    "LABEL": "class label",
+                    "DESCRIPTION": "class description",
+                    "SYMBOL_NAME": "symbol name",
+                    "AUTO": "class label, class description, or symbol name",
+                }.get((code_source or "AUTO").upper(), "class metadata")
+                pattern_text = code_pattern or "<none>"
                 raise RuntimeError(
                     "Could not determine an FGDC code from a symbology class. "
                     f"Class label: {item_label}. "
-                    "Make sure the code exists in the chosen source field of the .lyrx class."
+                    f"The tool looked in the {source_name} using pattern '{pattern_text}'. "
+                    "Make sure the FGDC code is stored there in the .lyrx class."
                 )
 
             for map_unit in item_mapunit_values(item, field_index):
