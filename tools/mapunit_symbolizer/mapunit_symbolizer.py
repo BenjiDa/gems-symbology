@@ -85,6 +85,49 @@ def load_overrides(csv_path: Optional[str]) -> Dict[str, str]:
     return overrides
 
 
+def load_symbol_lookup_csv(
+    csv_path: str,
+    mapunit_column: str = "MapUnit",
+    symbol_column: str = "Symbol",
+) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+
+    with open(csv_path, newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise RuntimeError(f"CSV has no header row: {csv_path}")
+
+        lowered = {name.lower(): name for name in reader.fieldnames}
+        if mapunit_column.lower() not in lowered or symbol_column.lower() not in lowered:
+            raise RuntimeError(
+                f"CSV must contain '{mapunit_column}' and '{symbol_column}' columns."
+            )
+
+        mapunit_key = lowered[mapunit_column.lower()]
+        symbol_key = lowered[symbol_column.lower()]
+
+        for row in reader:
+            map_unit = normalize_mapunit(row.get(mapunit_key))
+            symbol = (row.get(symbol_key) or "").strip()
+            if not map_unit:
+                continue
+            if not symbol:
+                raise RuntimeError(f"CSV row for MapUnit '{map_unit}' is missing a Symbol value.")
+
+            lookup_key = map_unit.lower()
+            if lookup_key in lookup and lookup[lookup_key] != symbol:
+                raise RuntimeError(
+                    f"CSV contains conflicting Symbol values for MapUnit '{map_unit}': "
+                    f"{lookup[lookup_key]} and {symbol}"
+                )
+            lookup[lookup_key] = symbol
+
+    if not lookup:
+        raise RuntimeError(f"No MapUnit-to-Symbol mappings were found in CSV: {csv_path}")
+
+    return lookup
+
+
 def looks_like_serpentinite(unit: str) -> bool:
     lowered = unit.lower()
     if lowered in {"sp", "spm", "sps"}:
@@ -311,6 +354,46 @@ def build_symbol_lookup_from_renderer(
     return lookup
 
 
+def extract_mapunits_from_renderer(
+    fields: Sequence[str],
+    groups: Sequence[Any],
+    value_field: str = "MapUnit",
+) -> List[str]:
+    if not fields:
+        raise RuntimeError("The template layer does not define any unique value fields.")
+
+    lowered_fields = [field.lower() for field in fields]
+    try:
+        field_index = lowered_fields.index(value_field.lower())
+    except ValueError as exc:
+        raise RuntimeError(
+            f"The template layer is not symbolized on the requested value field: {value_field}"
+        ) from exc
+
+    map_units: Dict[str, str] = {}
+    for group in groups:
+        for item in getattr(group, "items", []) or []:
+            for map_unit in item_mapunit_values(item, field_index):
+                map_units.setdefault(map_unit.lower(), map_unit)
+
+    if not map_units:
+        raise RuntimeError("No MapUnit classes were found in the template layer.")
+
+    return sorted(map_units.values(), key=str.lower)
+
+
+def compare_template_to_lookup(
+    template_mapunits: Sequence[str],
+    symbol_lookup: Dict[str, str],
+) -> Tuple[List[str], List[str]]:
+    template_keys = {normalize_mapunit(value).lower(): normalize_mapunit(value) for value in template_mapunits}
+    csv_keys = set(symbol_lookup.keys())
+
+    missing_in_csv = sorted(template_keys[key] for key in template_keys if key not in csv_keys)
+    extra_in_csv = sorted(symbol_lookup[key] and key for key in csv_keys if key not in template_keys)
+    return missing_in_csv, extra_in_csv
+
+
 def load_layerfile_renderer(
     layer_file_path: str,
     layer_name: Optional[str] = None,
@@ -466,6 +549,45 @@ def update_feature_class_from_layerfile(
         symbol_field=symbol_field,
     )
     return updated, unmatched, resolved_layer_name
+
+
+def update_feature_class_from_layerfile_and_csv(
+    feature_class: str,
+    layer_file_path: str,
+    csv_path: str,
+    mapunit_field: str = "MapUnit",
+    symbol_field: str = "Symbol",
+    template_value_field: str = "MapUnit",
+    layer_name: Optional[str] = None,
+    csv_mapunit_field: str = "MapUnit",
+    csv_symbol_field: str = "Symbol",
+) -> Tuple[int, int, str, int]:
+    fields, groups, resolved_layer_name = load_layerfile_renderer(layer_file_path, layer_name)
+    template_mapunits = extract_mapunits_from_renderer(
+        fields=fields,
+        groups=groups,
+        value_field=template_value_field,
+    )
+    symbol_lookup = load_symbol_lookup_csv(
+        csv_path=csv_path,
+        mapunit_column=csv_mapunit_field,
+        symbol_column=csv_symbol_field,
+    )
+    missing_in_csv, _extra_in_csv = compare_template_to_lookup(template_mapunits, symbol_lookup)
+    if missing_in_csv:
+        sample = ", ".join(missing_in_csv[:10])
+        raise RuntimeError(
+            "The CSV is missing Symbol values for MapUnit classes found in the template .lyrx: "
+            f"{sample}"
+        )
+
+    updated, unmatched = update_feature_class_from_lookup(
+        feature_class=feature_class,
+        symbol_lookup=symbol_lookup,
+        mapunit_field=mapunit_field,
+        symbol_field=symbol_field,
+    )
+    return updated, unmatched, resolved_layer_name, len(template_mapunits)
 
 
 def format_summary(counts: Dict[str, int]) -> str:

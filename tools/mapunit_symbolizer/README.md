@@ -4,7 +4,7 @@ This tool updates the `Symbol` field in a GeMS `MapUnitPolys` feature class by i
 
 There are now two workflows:
 
-- `Assign Symbols From Layer File`: preferred when you already have a curated `.lyrx`
+- `Assign Symbols From Layer File And CSV`: preferred when you already have a curated `.lyrx`
 - `Assign MapUnit Symbols`: fallback heuristic assignment based on MapUnit naming
 
 The default palette follows common USGS/FGDC age-color conventions:
@@ -35,31 +35,37 @@ The defaults are intentionally heuristic. Local abbreviations vary a lot, so the
    - `Symbol Field` if different from `Symbol`
    - `Override CSV` if you want exact unit-to-symbol assignments
 
-## Layer File Workflow
+## Layer File Plus CSV Workflow
 
-Use `Assign Symbols From Layer File` when you have a `.lyrx` that already has the right unique-value symbology for your map units.
+Use `Assign Symbols From Layer File And CSV` when you have a `.lyrx` with the right unique-value classes and a CSV with the exact FGDC `Symbol` values.
 
 Expected template setup:
 
 1. The template layer uses a `Unique Value` renderer.
 2. One of the renderer fields is `MapUnit` or another field you specify as `Template Value Field`.
-3. Each class stores the FGDC symbol code in one of these places:
-   - class label
-   - class description
-   - symbol name
+3. The unique-value classes correspond to the `MapUnit` values you want to populate.
 
-Recommended first attempt:
+Expected CSV format:
+
+```csv
+MapUnit,Symbol
+act,111
+Qal,71
+KJf,603
+sp,408
+```
+
+How it works:
+
+- The tool reads the list of `MapUnit` classes from the `.lyrx`.
+- It checks that every class in the `.lyrx` has a matching row in the CSV.
+- It writes the CSV `Symbol` value into `MapUnitPolys.Symbol`.
+
+Recommended parameters:
 
 - `Template Value Field`: `MapUnit`
-- `FGDC Code Source In Template`: `LABEL`
-- `FGDC Code Pattern`: `([A-Z0-9]+)`
-
-Example labels that work well:
-
-- `71`
-- `603`
-- `Qal | 71` with a more specific pattern such as `\\|\\s*([A-Z0-9]+)$`
-- `FGDC 603`
+- `CSV MapUnit Column`: `MapUnit`
+- `CSV Symbol Column`: `Symbol`
 
 ## Override CSV
 
@@ -80,7 +86,7 @@ Overrides take priority over the built-in heuristics.
 - The `Symbol` field is populated with the FGDC generic lookup key, not an RGB value.
 - The selected codes come from the FGDC digital geologic color chart and are grouped into practical palettes for each unit family.
 - If you later want this to also build a layer file or apply a full ArcGIS symbology renderer, we can add that as the next step.
-- The layer-file workflow is usually the better fit once you have an approved cartographic template.
+- The layer-file-plus-CSV workflow is usually the better fit once you have an approved cartographic template.
 
 ## Lock Errors
 

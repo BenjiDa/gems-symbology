@@ -12,6 +12,6 @@ Assigns FGDC color lookup keys to the `Symbol` field in `MapUnitPolys` based on 
 - Input: GeMS `MapUnitPolys` feature class
 - Primary fields: `MapUnit`, `Symbol`
 - Output: updated `Symbol` values using FGDC generic lookup codes
-- Preferred workflow: read a curated `.lyrx` and transfer its MapUnit-to-symbol mapping into `Symbol`
+- Preferred workflow: read `MapUnit` classes from a curated `.lyrx` and exact symbol values from a CSV
 
 See [tools/mapunit_symbolizer/README.md](/Users/benmelosh/Code/Current/gems-symbology/tools/mapunit_symbolizer/README.md).

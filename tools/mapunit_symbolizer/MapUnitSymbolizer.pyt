@@ -14,7 +14,7 @@ def load_symbolizer_module():
     module = importlib.reload(mapunit_symbolizer)
     expected_attrs = (
         "update_feature_class",
-        "update_feature_class_from_layerfile",
+        "update_feature_class_from_layerfile_and_csv",
         "format_summary",
     )
     missing = [attr for attr in expected_attrs if not hasattr(module, attr)]
@@ -36,10 +36,10 @@ class Toolbox(object):
 
 class AssignSymbolsFromLayerFile(object):
     def __init__(self):
-        self.label = "Assign Symbols From Layer File"
+        self.label = "Assign Symbols From Layer File And CSV"
         self.description = (
-            "Populate the Symbol field in MapUnitPolys by reading MapUnit-to-symbol mappings "
-            "from a predefined .lyrx unique-value renderer."
+            "Populate the Symbol field in MapUnitPolys by validating MapUnit classes against "
+            "a predefined .lyrx unique-value renderer and reading exact Symbol values from a CSV."
         )
         self.canRunInBackground = False
 
@@ -80,6 +80,15 @@ class AssignSymbolsFromLayerFile(object):
         )
         template_value_field.value = "MapUnit"
 
+        lookup_csv = arcpy.Parameter(
+            displayName="MapUnit Symbol CSV",
+            name="lookup_csv",
+            datatype="DEFile",
+            parameterType="Required",
+            direction="Input",
+        )
+        lookup_csv.filter.list = ["csv"]
+
         mapunit_field = arcpy.Parameter(
             displayName="MapUnit Field",
             name="mapunit_field",
@@ -100,34 +109,34 @@ class AssignSymbolsFromLayerFile(object):
         symbol_field.parameterDependencies = [input_fc.name]
         symbol_field.value = "Symbol"
 
-        code_source = arcpy.Parameter(
-            displayName="FGDC Code Source In Template",
-            name="code_source",
+        csv_mapunit_field = arcpy.Parameter(
+            displayName="CSV MapUnit Column",
+            name="csv_mapunit_field",
             datatype="GPString",
             parameterType="Required",
             direction="Input",
         )
-        code_source.filter.list = ["AUTO", "LABEL", "DESCRIPTION", "SYMBOL_NAME"]
-        code_source.value = "AUTO"
+        csv_mapunit_field.value = "MapUnit"
 
-        code_pattern = arcpy.Parameter(
-            displayName="FGDC Code Pattern",
-            name="code_pattern",
+        csv_symbol_field = arcpy.Parameter(
+            displayName="CSV Symbol Column",
+            name="csv_symbol_field",
             datatype="GPString",
-            parameterType="Optional",
+            parameterType="Required",
             direction="Input",
         )
-        code_pattern.value = r"([A-Z0-9]+)"
+        csv_symbol_field.value = "Symbol"
 
         return [
             input_fc,
             layer_file,
             layer_name,
             template_value_field,
+            lookup_csv,
             mapunit_field,
             symbol_field,
-            code_source,
-            code_pattern,
+            csv_mapunit_field,
+            csv_symbol_field,
         ]
 
     def isLicensed(self):
@@ -147,27 +156,30 @@ class AssignSymbolsFromLayerFile(object):
         layer_file = parameters[1].valueAsText
         layer_name = parameters[2].valueAsText or None
         template_value_field = parameters[3].valueAsText or "MapUnit"
-        mapunit_field = parameters[4].valueAsText or "MapUnit"
-        symbol_field = parameters[5].valueAsText or "Symbol"
-        code_source = parameters[6].valueAsText or "AUTO"
-        code_pattern = parameters[7].valueAsText or None
+        lookup_csv = parameters[4].valueAsText
+        mapunit_field = parameters[5].valueAsText or "MapUnit"
+        symbol_field = parameters[6].valueAsText or "Symbol"
+        csv_mapunit_field = parameters[7].valueAsText or "MapUnit"
+        csv_symbol_field = parameters[8].valueAsText or "Symbol"
 
         try:
-            updated, unmatched, resolved_layer_name = symbolizer.update_feature_class_from_layerfile(
+            updated, unmatched, resolved_layer_name, template_count = symbolizer.update_feature_class_from_layerfile_and_csv(
                 feature_class=input_fc,
                 layer_file_path=layer_file,
+                csv_path=lookup_csv,
                 mapunit_field=mapunit_field,
                 symbol_field=symbol_field,
                 template_value_field=template_value_field,
                 layer_name=layer_name,
-                code_source=code_source,
-                code_pattern=code_pattern,
+                csv_mapunit_field=csv_mapunit_field,
+                csv_symbol_field=csv_symbol_field,
             )
         except RuntimeError as exc:
             arcpy.AddError(str(exc))
             raise
 
         arcpy.AddMessage(f"Template layer: {resolved_layer_name}")
+        arcpy.AddMessage(f"Template MapUnit classes: {template_count}")
         arcpy.AddMessage(f"Updated {updated} rows.")
         arcpy.AddMessage(f"Rows with no template match: {unmatched}")
 

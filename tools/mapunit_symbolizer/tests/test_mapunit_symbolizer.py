@@ -85,6 +85,30 @@ class MapUnitSymbolizerTests(unittest.TestCase):
         )
         self.assertEqual(lookup["sp"], "408")
 
+    def test_extract_mapunits_from_renderer(self):
+        groups = [
+            FakeGroup(
+                [
+                    FakeItem(values=[FakeValue(["Qal"])]),
+                    FakeItem(values=[FakeValue(["act"])]),
+                ]
+            )
+        ]
+        map_units = mapunit_symbolizer.extract_mapunits_from_renderer(
+            fields=["MapUnit"],
+            groups=groups,
+            value_field="MapUnit",
+        )
+        self.assertEqual(map_units, ["act", "Qal"])
+
+    def test_compare_template_to_lookup_reports_missing_csv_values(self):
+        missing, extra = mapunit_symbolizer.compare_template_to_lookup(
+            template_mapunits=["act", "Qal"],
+            symbol_lookup={"qal": "71", "sp": "408"},
+        )
+        self.assertEqual(missing, ["act"])
+        self.assertEqual(extra, ["sp"])
+
 
 if __name__ == "__main__":
     unittest.main()
